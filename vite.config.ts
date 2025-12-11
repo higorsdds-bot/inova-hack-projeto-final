@@ -35,7 +35,8 @@ export default defineConfig({
     })
   ],
   define: {
-    'process.env.API_KEY': JSON.stringify(process.env.API_KEY)
+    // If process.env.API_KEY is undefined during local dev (without .env), use empty string to prevent build crash
+    'process.env.API_KEY': JSON.stringify(process.env.API_KEY || '')
   },
   build: {
     outDir: 'dist',

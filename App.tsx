@@ -8,16 +8,19 @@ import {
   Send, 
   Cpu, 
   MessageSquare,
-  BarChart3,
   FileText,
   User,
   ShieldCheck,
   UserCheck,
   Smartphone,
   Bell,
-  X
+  X,
+  Activity,
+  Wifi,
+  Zap,
+  Server,
+  BarChart3
 } from 'lucide-react';
-import { LineChart, Line, ResponsiveContainer, XAxis, YAxis, Tooltip } from 'recharts';
 
 // --- INITIAL DATA ---
 const INITIAL_SENSORS: SensorData[] = [
@@ -27,8 +30,6 @@ const INITIAL_SENSORS: SensorData[] = [
   { name: "Dosagem", min: 1, max: 400, current: 150, unit: "mL", status: 'OK', lastUpdated: '' },
 ];
 
-// João starts with an error immediately as requested
-// Added Pedro for Night Shift
 const INITIAL_EMPLOYEES: Employee[] = [
   { id: '1', name: "Maria", clockIn: "07:58", clockOut: "17:02", status: 'OFF_SHIFT' },
   { id: '2', name: "João", clockIn: "08:10", clockOut: null, status: 'MISSING_EXIT' },
@@ -88,12 +89,12 @@ export default function App() {
   const [isTyping, setIsTyping] = useState(false);
   const chatEndRef = useRef<HTMLDivElement>(null);
 
-  // Chart Data State
-  const [chartData, setChartData] = useState<{time: string, value: number}[]>([]);
+  // Neural Monitor State
+  const [neuralLoad, setNeuralLoad] = useState(12);
+  const [networkLatency, setNetworkLatency] = useState(24);
 
   // Initial Alert Check
   useEffect(() => {
-    // Check for initial employee errors to spawn a notification immediately
     const hasInitialError = employees.some(e => e.status === 'MISSING_EXIT');
     if (hasInitialError) {
       addNotification("ALERTA: Ponto pendente detectado (João). Notificação enviada ao supervisor.", 'ALERT');
@@ -110,7 +111,6 @@ export default function App() {
   const addNotification = (msg: string, type: 'INFO' | 'ALERT' | 'SUCCESS' = 'INFO') => {
     const newNotif = { id: Date.now().toString(), message: msg, type };
     setNotifications(prev => [newNotif, ...prev]);
-    // Auto remove after 5 seconds
     setTimeout(() => {
       setNotifications(prev => prev.filter(n => n.id !== newNotif.id));
     }, 6000);
@@ -122,9 +122,12 @@ export default function App() {
       const now = Date.now();
       const isGracePeriod = now < gracePeriodEnd;
 
+      // Simulate Neural Load fluctuations
+      setNeuralLoad(prev => Math.max(5, Math.min(98, prev + (Math.random() - 0.5) * 10)));
+      setNetworkLatency(prev => Math.max(10, Math.min(150, prev + (Math.random() - 0.5) * 20)));
+
       // 1. Machine Logic
       if (machine.isOn) {
-        // Update sensors
         setSensors(prev => {
           let hasNewCritical = false;
           const updated = prev.map(s => {
@@ -146,7 +149,6 @@ export default function App() {
             if (!isGracePeriod) {
               if (newVal < s.min || newVal > s.max) {
                 newStatus = 'CRITICAL';
-                // Only trigger if it wasn't critical before (simple debounce)
                 if (s.status !== 'CRITICAL') hasNewCritical = true;
               }
               else if (newVal < s.min * 1.1 || newVal > s.max * 0.9) newStatus = 'WARNING';
@@ -166,24 +168,13 @@ export default function App() {
 
           return updated;
         });
-
-        // Add to chart data
-        setChartData(prev => {
-          const dosage = sensors.find(s => s.name === "Dosagem")?.current || 0;
-          const newData = [...prev, { time: new Date().toLocaleTimeString('pt-BR'), value: dosage }];
-          if (newData.length > 20) newData.shift();
-          return newData;
-        });
-
       } else {
-        // Machine is OFF - Calculate Losses
         setMachine(prev => ({
           ...prev,
           totalDowntimeSeconds: prev.totalDowntimeSeconds + 1,
           productionLoss: prev.productionLoss + 0.85 
         }));
       }
-
     }, 1000);
 
     return () => clearInterval(interval);
@@ -192,7 +183,6 @@ export default function App() {
   // --- HANDLERS ---
   const togglePower = () => {
     if (machine.isOn) {
-      // --- DESLIGANDO ---
       const correctionReport: SystemReport = {
         id: Date.now().toString(),
         title: `Manutenção Corretiva - ${new Date().toLocaleTimeString('pt-BR')}`,
@@ -220,7 +210,6 @@ export default function App() {
       }]);
 
     } else {
-      // --- LIGANDO ---
       setGracePeriodEnd(Date.now() + 15000);
       setMachine(prev => ({ ...prev, isOn: true }));
       addNotification("Inicializando motor. Notificação de início de turno enviada.", 'SUCCESS');
@@ -251,7 +240,6 @@ export default function App() {
 
     addNotification(`Correção aplicada: ${issues.length} ponto(s) ajustado(s). Gerência notificada via Mobile.`, 'SUCCESS');
     
-    // Generate an automatic report for the correction
     const rhReport: SystemReport = {
         id: Date.now().toString(),
         title: `Ajuste de Ponto - ${new Date().toLocaleTimeString('pt-BR')}`,
@@ -279,6 +267,9 @@ export default function App() {
     setChatHistory(prev => [...prev, userMsg]);
     setIsTyping(true);
 
+    // Increase simulated load during request
+    setNeuralLoad(85);
+
     const responseText = await generateSupervisorResponse(
       userText,
       machine,
@@ -288,8 +279,8 @@ export default function App() {
     );
 
     setIsTyping(false);
+    setNeuralLoad(15); // Reset load
     
-    // Broad detection for report types
     const lowerText = userText.toLowerCase();
     let reportType: 'GERAL' | 'FINANCEIRO' | 'RH' = 'GERAL';
     if (lowerText.includes('financeiro') || lowerText.includes('custo') || lowerText.includes('dinheiro')) reportType = 'FINANCEIRO';
@@ -327,7 +318,6 @@ export default function App() {
     if (e.key === 'Enter') handleSendMessage();
   };
 
-  // --- RISK CALCULATIONS ---
   const getMachineRiskStatus = () => {
     if (!machine.isOn) return { label: 'PARADA', color: 'text-slate-500' };
     const criticalSensors = sensors.filter(s => s.status === 'CRITICAL');
@@ -382,7 +372,7 @@ export default function App() {
           </div>
           <div>
             <h1 className="text-2xl font-bold text-white tracking-tight">NEXUS IA</h1>
-            <p className="text-xs text-blue-400 font-mono tracking-widest">SISTEMA SUPERVISÓRIO v3.0</p>
+            <p className="text-xs text-blue-400 font-mono tracking-widest">SISTEMA SUPERVISÓRIO v3.1</p>
           </div>
         </div>
 
@@ -447,35 +437,87 @@ export default function App() {
             ))}
           </div>
 
-          {/* Live Chart */}
-          <div className="bg-slate-900 rounded-2xl border border-slate-800 p-6 flex-1 min-h-[300px] flex flex-col">
-            <div className="flex justify-between items-center mb-4">
+          {/* Neural Monitor Panel (Replaces Graph) */}
+          <div className="bg-slate-900 rounded-2xl border border-slate-800 p-6 flex-1 min-h-[300px] flex flex-col relative overflow-hidden">
+            {/* Ambient Background Glow */}
+            <div className="absolute -top-20 -right-20 w-60 h-60 bg-blue-500/10 rounded-full blur-[80px] pointer-events-none"></div>
+            <div className="absolute -bottom-20 -left-20 w-60 h-60 bg-purple-500/10 rounded-full blur-[80px] pointer-events-none"></div>
+
+            <div className="flex justify-between items-center mb-6 relative z-10">
                <h3 className="font-semibold text-slate-200 flex items-center gap-2">
-                 <BarChart3 size={18} className="text-blue-400"/> Telemetria de Dosagem
+                 <Activity size={18} className="text-emerald-400"/> Monitoramento Neural & Eficiência
                </h3>
-               <span className="text-xs text-slate-500 font-mono flex items-center gap-1">
-                 <div className={`w-2 h-2 rounded-full ${machine.isOn ? 'bg-red-500 animate-pulse' : 'bg-slate-600'}`}></div> AO VIVO
+               <span className="text-xs text-slate-500 font-mono flex items-center gap-1 border border-slate-700 px-2 py-1 rounded-full bg-slate-950/50">
+                 <div className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse"></div> 
+                 REDE ESTÁVEL
                </span>
             </div>
-            <div className="flex-1 w-full h-full min-h-0">
-              <ResponsiveContainer width="100%" height="100%">
-                <LineChart data={chartData}>
-                  <XAxis dataKey="time" hide />
-                  <YAxis domain={[0, 450]} stroke="#475569" tick={{fontSize: 12}} />
-                  <Tooltip 
-                    contentStyle={{ backgroundColor: '#1e293b', borderColor: '#334155', color: '#f8fafc' }} 
-                    itemStyle={{ color: '#60a5fa' }}
-                  />
-                  <Line 
-                    type="monotone" 
-                    dataKey="value" 
-                    stroke="#3b82f6" 
-                    strokeWidth={2} 
-                    dot={false} 
-                    activeDot={{ r: 6, fill: '#60a5fa' }} 
-                  />
-                </LineChart>
-              </ResponsiveContainer>
+
+            <div className="flex-1 grid grid-cols-1 md:grid-cols-2 gap-8 relative z-10">
+              
+              {/* Circular Efficiency Indicator */}
+              <div className="flex flex-col items-center justify-center">
+                 <div className="relative w-40 h-40 flex items-center justify-center">
+                    {/* Outer Ring */}
+                    <div className="absolute inset-0 rounded-full border-4 border-slate-800"></div>
+                    {/* Animated Spin Ring */}
+                    <div className="absolute inset-0 rounded-full border-4 border-transparent border-t-emerald-500 animate-spin duration-[3s]"></div>
+                    {/* Inner Content */}
+                    <div className="flex flex-col items-center">
+                      <span className="text-4xl font-bold text-white tracking-tighter">
+                        {machine.isOn ? (isGracePeriod ? '84%' : '98%') : '0%'}
+                      </span>
+                      <span className="text-[10px] text-slate-400 uppercase tracking-widest mt-1">Eficiência</span>
+                    </div>
+                 </div>
+                 <p className="mt-4 text-xs text-slate-400 text-center max-w-[200px]">
+                   {machine.isOn ? "Otimização de processos em tempo real ativa." : "Aguardando inicialização do sistema."}
+                 </p>
+              </div>
+
+              {/* Metrics Bars */}
+              <div className="flex flex-col justify-center gap-6">
+                
+                {/* Latency */}
+                <div className="space-y-2">
+                  <div className="flex justify-between text-xs font-bold text-slate-400">
+                    <span className="flex items-center gap-1"><Wifi size={12}/> Latência de Rede</span>
+                    <span className="text-blue-400">{networkLatency.toFixed(0)}ms</span>
+                  </div>
+                  <div className="h-2 w-full bg-slate-800 rounded-full overflow-hidden">
+                    <div 
+                      className="h-full bg-blue-500 rounded-full transition-all duration-500" 
+                      style={{ width: `${Math.min(100, (networkLatency / 150) * 100)}%` }}
+                    ></div>
+                  </div>
+                </div>
+
+                {/* Processing Load */}
+                <div className="space-y-2">
+                  <div className="flex justify-between text-xs font-bold text-slate-400">
+                    <span className="flex items-center gap-1"><Zap size={12}/> Carga Neural</span>
+                    <span className="text-purple-400">{neuralLoad.toFixed(1)}%</span>
+                  </div>
+                  <div className="h-2 w-full bg-slate-800 rounded-full overflow-hidden">
+                    <div 
+                      className="h-full bg-purple-500 rounded-full transition-all duration-300" 
+                      style={{ width: `${neuralLoad}%` }}
+                    ></div>
+                  </div>
+                </div>
+
+                {/* Server Status */}
+                <div className="flex items-center gap-3 p-3 bg-slate-800/50 rounded-lg border border-slate-700/50 mt-2">
+                   <div className="bg-slate-900 p-2 rounded text-emerald-400">
+                     <Server size={16} />
+                   </div>
+                   <div>
+                     <div className="text-xs text-slate-400">Status do Servidor</div>
+                     <div className="text-sm font-bold text-white">Online • <span className="text-emerald-500">Estável</span></div>
+                   </div>
+                </div>
+
+              </div>
             </div>
           </div>
 
@@ -516,7 +558,7 @@ export default function App() {
                 <MessageSquare size={18} className="text-emerald-400" />
                 NEXUS IA
               </h3>
-              <p className="text-[10px] text-slate-500 uppercase tracking-wider">Interface Neural v3.0</p>
+              <p className="text-[10px] text-slate-500 uppercase tracking-wider">Interface Neural v3.1</p>
             </div>
             
             <div className="flex px-2 gap-1">
