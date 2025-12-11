@@ -1,0 +1,5 @@
+{
+  "name": " Nexus Industrial AI V-final",
+  "description": "A real-time industrial supervision dashboard powered by Gemini 2.5 Flash. Monitors machine sensors, employee shifts, and calculates production losses with an integrated AI assistant for anomaly analysis and reporting.",
+  "requestFramePermissions": []
+}

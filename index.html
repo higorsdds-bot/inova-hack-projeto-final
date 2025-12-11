@@ -1,0 +1,48 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Nexus Industrial AI</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+      /* Custom scrollbar for webkit */
+      ::-webkit-scrollbar {
+        width: 6px;
+        height: 6px;
+      }
+      ::-webkit-scrollbar-track {
+        background: #0f172a; 
+      }
+      ::-webkit-scrollbar-thumb {
+        background: #334155; 
+        border-radius: 3px;
+      }
+      ::-webkit-scrollbar-thumb:hover {
+        background: #475569; 
+      }
+      .scrollbar-hide::-webkit-scrollbar {
+          display: none;
+      }
+      .scrollbar-hide {
+          -ms-overflow-style: none;
+          scrollbar-width: none;
+      }
+    </style>
+  <script type="importmap">
+{
+  "imports": {
+    "react-dom/": "https://esm.sh/react-dom@^19.2.1/",
+    "react/": "https://esm.sh/react@^19.2.1/",
+    "react": "https://esm.sh/react@^19.2.1",
+    "recharts": "https://esm.sh/recharts@^3.5.1",
+    "@google/genai": "https://esm.sh/@google/genai@^1.32.0",
+    "lucide-react": "https://esm.sh/lucide-react@^0.559.0"
+  }
+}
+</script>
+</head>
+  <body class="bg-slate-950 text-slate-200 antialiased">
+    <div id="root"></div>
+  </body>
+</html>
