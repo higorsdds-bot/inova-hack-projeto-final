@@ -21,8 +21,10 @@ export interface MachineState {
   lastToggleTime: Date;
   totalDowntimeSeconds: number;
   productionLoss: number;
-  isAutoCorrecting: boolean;     // Novo
-  autoCorrectionStartTime: number; // Novo
+  isAutoCorrecting: boolean;
+  autoCorrectionStartTime: number;
+  refillTimer: number; // Tempo restante do tanque em segundos (12min = 720s)
+  autoCorrectionAttempts: number; // Contador de tentativas de correção (max 3)
 }
 
 export interface ChatMessage {
@@ -37,7 +39,7 @@ export interface SystemReport {
   title: string;
   content: string;
   timestamp: Date;
-  type: 'GERAL' | 'FINANCEIRO' | 'INCIDENTE' | 'RH';
+  type: 'GERAL' | 'FINANCEIRO' | 'INCIDENTE' | 'RH' | 'ENERGIA' | 'PREVISAO';
 }
 
 export interface SystemNotification {

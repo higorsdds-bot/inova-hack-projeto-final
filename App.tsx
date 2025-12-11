@@ -24,7 +24,9 @@ import {
   Trash2,
   HardHat,
   Leaf,
-  AlertOctagon
+  AlertOctagon,
+  Container, // Ícone do Tanque
+  Fuel       // Ícone de Abastecer
 } from 'lucide-react';
 
 // --- INITIAL DATA ---
@@ -45,31 +47,31 @@ const INITIAL_EMPLOYEES: Employee[] = [
 const PRE_CANNED_REPORTS: SystemReport[] = [
   {
     id: "hist-1",
-    title: "Relatório de Ponto - Semana Anterior",
+    title: "Relatório de Ponto - Turno Anterior",
     type: "RH",
-    timestamp: new Date(Date.now() - 86400000 * 2),
-    content: "**ANÁLISE DE FREQUÊNCIA**\n\n- **Maria:** 100% de pontualidade. Sem horas extras.\n- **João:** 2 ocorrências de esquecimento de ponto. Impacto: Risco trabalhista leve.\n- **Carlos:** Férias regulamentares.\n- **Pedro:** Adicional noturno contabilizado (Escala 12x36).\n\n**Conclusão:** Equipe operando dentro da normalidade, exceto pelas pendências de registro manual de João."
+    timestamp: new Date(Date.now() - 3600000 * 4), // 4 horas atrás
+    content: "**ANÁLISE DE FREQUÊNCIA (06:00 - 14:00)**\n\n- **Maria:** Ponto regular. Sem ocorrências.\n- **João:** Falha no registro de saída às 14:00.\n**Ação:** Notificação enviada. Necessário ajuste manual.\n**Impacto:** Risco de inconsistência na folha."
   },
   {
     id: "hist-2",
-    title: "Análise de Produtividade Mensal",
+    title: "Consumo de Insumos (Diário)",
     type: "FINANCEIRO",
-    timestamp: new Date(Date.now() - 86400000 * 5),
-    content: "**ANÁLISE FINANCEIRA**\n\n- **Produção Bruta:** 98.5%\n- **Perdas:** R$ 1.240,00 (Variação de Dosagem)\n\n**Ação Recomendada:** Calibração dos sensores de dosagem para evitar desperdício de matéria-prima."
+    timestamp: new Date(Date.now() - 3600000 * 2),
+    content: "**BALANÇO DE MATÉRIA-PRIMA**\n\n- **Consumo Total:** 450 Litros\n- **Desperdício Estimado:** 2.3% (Variação de Dosagem)\n- **Custo do Desperdício:** R$ 145,00\n\n**Observação:** Recomenda-se calibração da bomba dosadora B-04."
   },
   {
     id: "hist-3",
-    title: "Registro de Turno Noturno",
-    type: "RH",
+    title: "Previsão de Manutenção",
+    type: "PREVISAO",
     timestamp: new Date(),
-    content: "**STATUS ATUAL**\n\n- **Funcionário:** Pedro\n- **Horário de Entrada:** 22:00\n- **Atividade:** Monitoramento Supervisório\n\n**OBSERVAÇÃO:** Colaborador ativo e cobrindo turno da noite. Adicional noturno vigente."
+    content: "**ANÁLISE PREDITIVA (24h)**\n\n- **Risco de Falha:** BAIXO\n- **Componente Crítico:** Rolamento do Motor Principal (Vibração em leve alta).\n- **Recomendação:** Lubrificação programada para o próximo turno."
   }
 ];
 
 const QUICK_COMMANDS = [
   { icon: Wrench, label: "Diagnóstico", cmd: "Realizar diagnóstico completo do sistema" },
+  { icon: User, label: "Funcionários", cmd: "Gerar relatório detalhado dos funcionários e pontos" },
   { icon: HardHat, label: "Segurança", cmd: "Verificar status de EPIs e riscos" },
-  { icon: Leaf, label: "Energia", cmd: "Análise de eficiência energética" },
   { icon: Activity, label: "Previsão", cmd: "Previsão de falhas para as próximas 24h" },
 ];
 
@@ -81,7 +83,9 @@ export default function App() {
     totalDowntimeSeconds: 0,
     productionLoss: 0,
     isAutoCorrecting: false,
-    autoCorrectionStartTime: 0
+    autoCorrectionStartTime: 0,
+    refillTimer: 90, // Começa com 90s para teste (Valor real seria 720s para 12min)
+    autoCorrectionAttempts: 0
   });
 
   const [sensors, setSensors] = useState<SensorData[]>(INITIAL_SENSORS);
@@ -138,28 +142,39 @@ export default function App() {
       autoCorrectionStartTime: 0 
     }));
     
-    // Reset Sensors visually
     setSensors(prev => prev.map(s => ({ ...s, current: 0, status: 'OK' })));
 
-    // Report
     const emergencyReport: SystemReport = {
       id: Date.now().toString(),
       title: `DESLIGAMENTO DE EMERGÊNCIA - ${new Date().toLocaleTimeString('pt-BR')}`,
       type: 'INCIDENTE',
       timestamp: new Date(),
-      content: `**CRITICIDADE MÁXIMA DETECTADA**\n\n**CAUSA:** ${reason}\n**FALHA:** A auto-correção automática não conseguiu estabilizar os níveis em 1s.\n**AÇÃO:** Corte de energia imediato para preservação do equipamento.\n**IMPACTO:** Parada total da linha.`
+      content: `**CRITICIDADE MÁXIMA DETECTADA**\n\n**CAUSA:** ${reason}\n**AÇÃO:** Corte de energia imediato.\n**STATUS:** Máquina parada. Reinício manual obrigatório.`
     };
     setReports(prev => [emergencyReport, ...prev]);
     setActiveTab('reports');
     
-    addNotification(`FALHA CRÍTICA: ${reason}. Desligamento de emergência acionado.`, 'ALERT');
+    addNotification(`FALHA CRÍTICA: ${reason}. Desligamento acionado.`, 'ALERT');
     
     setChatHistory(prev => [...prev, { 
       id: Date.now().toString(), 
       role: 'system', 
-      text: "NEXUS: Protocolo de emergência executado. Auto-correção falhou. Máquina desligada.", 
+      text: `NEXUS: Protocolo de emergência executado. Motivo: ${reason}.`, 
       timestamp: new Date() 
     }]);
+  };
+
+  const handleRefill = () => {
+      setMachine(prev => ({ ...prev, refillTimer: 720 })); // Reseta para 12 minutos
+      addNotification("Abastecimento confirmado. Tanque 100%.", 'SUCCESS');
+      
+      // Log do abastecimento
+      setChatHistory(prev => [...prev, { 
+        id: Date.now().toString(), 
+        role: 'system', 
+        text: `NEXUS: Registro de abastecimento de insumo confirmado pelo operador às ${new Date().toLocaleTimeString('pt-BR')}.`, 
+        timestamp: new Date() 
+      }]);
   };
 
   // --- SIMULATION LOOP ---
@@ -168,13 +183,29 @@ export default function App() {
       const now = Date.now();
       const isGracePeriod = now < gracePeriodEnd;
 
-      // Simulate Neural Load fluctuations
       setNeuralLoad(prev => Math.max(5, Math.min(98, prev + (Math.random() - 0.5) * 10)));
       setNetworkLatency(prev => Math.max(10, Math.min(150, prev + (Math.random() - 0.5) * 20)));
 
       // 1. Machine Logic
       if (machine.isOn) {
         
+        // --- TANK LOGIC ---
+        setMachine(prev => {
+           const newTimer = prev.refillTimer - 1;
+           if (newTimer <= 0) {
+               // Falha por falta de insumo (será tratado abaixo)
+               return { ...prev, refillTimer: 0 };
+           }
+           return { ...prev, refillTimer: newTimer };
+        });
+
+        if (machine.refillTimer <= 0) {
+            handleEmergencyShutdown("Falta de Insumo (Tanque Vazio)");
+            // Zera dosagem visualmente
+            setSensors(prev => prev.map(s => s.name === "Dosagem" ? { ...s, current: 0, status: 'CRITICAL' } : s));
+            return; // Sai do loop
+        }
+
         // --- SENSOR UPDATES ---
         let criticalSensors: string[] = [];
         
@@ -182,18 +213,16 @@ export default function App() {
           return prev.map(s => {
             let change = (Math.random() - 0.5) * 2; 
 
-            // If auto-correcting, try to force values back to mean (Damping)
+            // Se auto-corrigindo, força valores para o ideal
             if (machine.isAutoCorrecting) {
                const ideal = (s.min + s.max) / 2;
-               // Strong pull towards ideal value
                change = (ideal - s.current) * 0.3; 
             } else if (!isGracePeriod && Math.random() < 0.08) {
-               change += (Math.random() * 25); // Random spike
+               change += (Math.random() * 25); // Pico aleatório
             }
 
             let newVal = Math.max(0, s.current + change);
             
-            // Grace period logic
             if (isGracePeriod) {
                const ideal = (s.min + s.max) / 2;
                newVal = s.current + (ideal - s.current) * 0.1;
@@ -217,16 +246,7 @@ export default function App() {
           });
         });
 
-        // --- CHECK FOR CRITICAL STATE AFTER UPDATE ---
-        // We need to check the state we just calculated. 
-        // Since setState is async, we'll do a "look-ahead" check or rely on the previous cycle's effect if using refs, 
-        // but here we can iterate the sensors state in the next tick. 
-        // Simpler approach: Check current sensors state inside the SetInterval before update? No, check updated values.
-        
-        // Since we can't access the *just set* state immediately, we will use a functional update for logic
-        // or check the *previous* state at the start of the next interval.
-        // Let's check `sensors` state which is from the *last* render.
-        
+        // --- CHECK CRITICALS ---
         const currentCriticals = sensors.filter(s => 
           s.status === 'CRITICAL' && 
           ['Temperatura', 'Pressão', 'Vibração'].includes(s.name)
@@ -235,32 +255,30 @@ export default function App() {
         if (currentCriticals.length > 0) {
            
            if (!machine.isAutoCorrecting) {
-             // START AUTO CORRECTION
-             setMachine(prev => ({
-               ...prev,
-               isAutoCorrecting: true,
-               autoCorrectionStartTime: Date.now()
-             }));
-             addNotification(`ANOMALIA DETECTADA (${currentCriticals.map(s=>s.name).join(', ')}). Tentando auto-correção (1s)...`, 'ALERT');
-             setChatHistory(prev => [...prev, { 
-                id: Date.now().toString(), 
-                role: 'system', 
-                text: "NEXUS: Iniciando sub-rotina de estabilização autônoma...", 
-                timestamp: new Date() 
-             }]);
+             // INICIAR AUTO CORREÇÃO
+             if (machine.autoCorrectionAttempts >= 3) {
+                 // Limite de 3 tentativas excedido
+                 handleEmergencyShutdown("Falha Sistêmica (Limite de 3 Auto-correções excedido)");
+             } else {
+                 setMachine(prev => ({
+                   ...prev,
+                   isAutoCorrecting: true,
+                   autoCorrectionStartTime: Date.now(),
+                   autoCorrectionAttempts: prev.autoCorrectionAttempts + 1
+                 }));
+                 addNotification(`ANOMALIA DETECTADA. Tentativa de auto-correção ${machine.autoCorrectionAttempts + 1}/3...`, 'ALERT');
+             }
 
            } else {
-             // ALREADY AUTO CORRECTING - CHECK TIME
+             // JÁ ESTÁ CORRIGINDO - VERIFICAR TEMPO (1s)
              const elapsed = Date.now() - machine.autoCorrectionStartTime;
-             if (elapsed > 1500) { // Giving it ~1.5s (allow 1 tick buffer over 1s)
-                // TIME IS UP. DID IT FIX?
-                // If we are here, `currentCriticals` is still > 0 based on the last render.
-                // Emergency Shutdown.
-                handleEmergencyShutdown(`Falha Crítica persistente em: ${currentCriticals.map(s => s.name).join(', ')}`);
+             if (elapsed > 1500) { 
+                // Tempo esgotou e ainda está crítico -> Desliga
+                handleEmergencyShutdown(`Correção falhou para: ${currentCriticals.map(s => s.name).join(', ')}`);
              }
            }
         } else {
-           // No criticals. If we were correcting, we succeeded.
+           // Se estava corrigindo e limpou os erros -> Sucesso
            if (machine.isAutoCorrecting) {
               setMachine(prev => ({
                 ...prev,
@@ -272,7 +290,7 @@ export default function App() {
         }
 
       } else {
-        // Machine OFF
+        // Máquina PARADA
         setMachine(prev => ({
           ...prev,
           totalDowntimeSeconds: prev.totalDowntimeSeconds + 1,
@@ -282,46 +300,38 @@ export default function App() {
     }, 1000);
 
     return () => clearInterval(interval);
-  }, [machine.isOn, machine.isAutoCorrecting, machine.autoCorrectionStartTime, sensors, gracePeriodEnd]);
+  }, [machine.isOn, machine.isAutoCorrecting, machine.autoCorrectionStartTime, machine.refillTimer, machine.autoCorrectionAttempts, sensors, gracePeriodEnd]);
 
   // --- HANDLERS ---
   const togglePower = () => {
     if (machine.isOn) {
       const correctionReport: SystemReport = {
         id: Date.now().toString(),
-        title: `Manutenção Corretiva - ${new Date().toLocaleTimeString('pt-BR')}`,
-        content: `**ANÁLISE DE CAUSA:** Parada manual solicitada pelo operador.\n\n**AÇÕES EXECUTADAS:**\n- Recalibragem de sensores.\n- Reset de protocolos de segurança.\n\n**STATUS:** Sistema seguro. Notificação de parada enviada à gerência.`,
+        title: `Parada Manual - ${new Date().toLocaleTimeString('pt-BR')}`,
+        content: `**REGISTRO DE OPERAÇÃO**\n\nO operador solicitou parada manual da linha.\nOs contadores de tentativa de correção foram resetados.\nO sistema aguarda nova inicialização.`,
         timestamp: new Date(),
         type: 'GERAL'
       };
       setReports(prev => [correctionReport, ...prev]);
-      setActiveTab('reports');
-
+      
       setSensors(INITIAL_SENSORS.map(s => ({
         ...s,
         current: (s.min + s.max) / 2,
         status: 'OK'
       })));
 
-      setMachine(prev => ({ ...prev, isOn: false, isAutoCorrecting: false }));
-      addNotification("Máquina parada manualmente. Logs sincronizados na nuvem.", 'INFO');
-      
-      setChatHistory(prev => [...prev, { 
-        id: Date.now().toString(), 
-        role: 'system', 
-        text: "NEXUS: Sistema em stand-by. Relatório de interrupção gerado.", 
-        timestamp: new Date() 
-      }]);
+      setMachine(prev => ({ ...prev, isOn: false, isAutoCorrecting: false, autoCorrectionAttempts: 0 }));
+      addNotification("Máquina parada manualmente. Logs salvos.", 'INFO');
 
     } else {
-      setGracePeriodEnd(Date.now() + 15000);
-      setMachine(prev => ({ ...prev, isOn: true, isAutoCorrecting: false }));
-      addNotification("Inicializando motor. Notificação de início de turno enviada.", 'SUCCESS');
+      setGracePeriodEnd(Date.now() + 25000); // 25s de estabilização
+      setMachine(prev => ({ ...prev, isOn: true, isAutoCorrecting: false, autoCorrectionAttempts: 0 }));
+      addNotification("Inicializando motor. Estabilização de 25s iniciada.", 'SUCCESS');
 
       setChatHistory(prev => [...prev, { 
         id: Date.now().toString(), 
         role: 'system', 
-        text: "NEXUS: Inicializando... Modo de Segurança ativo por 15 segundos.", 
+        text: "NEXUS: Inicializando... Modo de Segurança ativo por 25 segundos.", 
         timestamp: new Date() 
       }]);
     }
@@ -336,29 +346,22 @@ export default function App() {
             return { 
                 ...e, 
                 status: 'OFF_SHIFT',
-                clockOut: "17:00 (Manual)"
+                clockOut: "17:00 (Ajuste Manual)"
             };
         }
         return e;
     }));
 
-    addNotification(`Correção aplicada: ${issues.length} ponto(s) ajustado(s). Gerência notificada via Mobile.`, 'SUCCESS');
+    addNotification(`Ponto corrigido manualmente. Gerência notificada via Mobile.`, 'SUCCESS');
     
     const rhReport: SystemReport = {
         id: Date.now().toString(),
-        title: `Ajuste de Ponto - ${new Date().toLocaleTimeString('pt-BR')}`,
+        title: `Correção de Ponto - ${new Date().toLocaleTimeString('pt-BR')}`,
         type: 'RH',
         timestamp: new Date(),
-        content: `**ANÁLISE DE OCORRÊNCIA:** Falha no registro de saída (Ponto Eletrônico).\n\n**IMPACTO FINANCEIRO:** Risco de hora extra indevida mitigado.\n\n**AÇÃO:** Ajuste manual realizado pelo supervisor. Funcionário notificado no app.`
+        content: `**REGISTRO DE AJUSTE MANUAL**\n\n- **Funcionário(s):** ${issues.map(i => i.name).join(', ')}\n- **Motivo:** Falha de registro na saída.\n- **Ação:** Horário ajustado para 17:00.\n- **Notificação:** Enviada ao funcionário e RH.`
     };
     setReports(prev => [rhReport, ...prev]);
-
-    setChatHistory(prev => [...prev, { 
-        id: Date.now().toString(), 
-        role: 'system', 
-        text: `NEXUS: Pendências de ponto corrigidas. Relatório de RH gerado automaticamente.`, 
-        timestamp: new Date() 
-    }]);
   };
 
   const clearChat = () => {
@@ -377,8 +380,7 @@ export default function App() {
     setChatHistory(prev => [...prev, userMsg]);
     setIsTyping(true);
 
-    // Increase simulated load during request
-    setNeuralLoad(85);
+    setNeuralLoad(85); // Simula carga
 
     const responseText = await generateSupervisorResponse(
       userText,
@@ -389,16 +391,19 @@ export default function App() {
     );
 
     setIsTyping(false);
-    setNeuralLoad(15); // Reset load
+    setNeuralLoad(15); 
     
     const lowerText = userText.toLowerCase();
-    let reportType: 'GERAL' | 'FINANCEIRO' | 'RH' = 'GERAL';
-    if (lowerText.includes('financeiro') || lowerText.includes('custo') || lowerText.includes('dinheiro')) reportType = 'FINANCEIRO';
+    let reportType: 'GERAL' | 'FINANCEIRO' | 'RH' | 'PREVISAO' = 'GERAL';
+    if (lowerText.includes('financeiro') || lowerText.includes('custo')) reportType = 'FINANCEIRO';
     else if (lowerText.includes('ponto') || lowerText.includes('funcionario') || lowerText.includes('rh')) reportType = 'RH';
+    else if (lowerText.includes('previsão') || lowerText.includes('futuro')) reportType = 'PREVISAO';
 
+    // Se for um "Oi", não gera relatório. Se tiver "relatório" ou for longo, gera.
+    const isGreeting = ['oi', 'ola', 'olá', 'bom dia', 'boa tarde'].includes(lowerText.trim());
     const isReportRequest = lowerText.includes('relatório') || lowerText.includes('analise') || lowerText.includes('status');
 
-    if (isReportRequest || responseText.length > 300) {
+    if (!isGreeting && (isReportRequest || responseText.length > 250)) {
       const newReport: SystemReport = {
         id: Date.now().toString(),
         title: `Relatório Inteligente - ${reportType}`,
@@ -411,7 +416,7 @@ export default function App() {
       setChatHistory(prev => [...prev, {
         id: (Date.now() + 1).toString(),
         role: 'system',
-        text: `📄 Relatório de ${reportType} gerado. Detalhes de Causa e Impacto disponíveis na aba Relatórios.`,
+        text: `📄 Relatório de ${reportType} gerado e arquivado.`,
         timestamp: new Date()
       }]);
     } else {
@@ -433,22 +438,18 @@ export default function App() {
     if (machine.isAutoCorrecting) return { label: 'AUTO-CORREÇÃO', color: 'text-orange-400 animate-pulse' };
 
     const criticalSensors = sensors.filter(s => s.status === 'CRITICAL');
-    const warningSensors = sensors.filter(s => s.status === 'WARNING');
     if (criticalSensors.length > 0) return { label: 'CRÍTICO', color: 'text-red-500 animate-pulse' };
-    if (warningSensors.length > 0) return { label: 'ATENÇÃO', color: 'text-yellow-400' };
+    
+    // Alerta de tanque baixo
+    if (machine.refillTimer < 120) return { label: 'INSUMO BAIXO', color: 'text-yellow-400 animate-pulse' };
+
     return { label: 'NORMAL', color: 'text-emerald-500' };
   };
 
-  const getEmployeeRiskStatus = () => {
-    const laborErrors = employees.filter(e => e.status === 'MISSING_EXIT').length;
-    if (laborErrors > 0) return { label: `PENDÊNCIA (${laborErrors})`, color: 'text-red-500 animate-pulse' };
-    return { label: 'REGULAR', color: 'text-emerald-500' };
-  };
-
   const machineRisk = getMachineRiskStatus();
-  const employeeRisk = getEmployeeRiskStatus();
-  const isGracePeriod = Date.now() < gracePeriodEnd && machine.isOn;
-  const hasLaborIssues = employees.some(e => e.status === 'MISSING_EXIT');
+  
+  // Calcula porcentagem do tanque
+  const tankPercent = Math.max(0, Math.min(100, (machine.refillTimer / 720) * 100));
 
   return (
     <div className="min-h-screen bg-slate-950 text-slate-200 p-4 md:p-6 font-sans relative">
@@ -484,7 +485,7 @@ export default function App() {
           </div>
           <div>
             <h1 className="text-2xl font-bold text-white tracking-tight">NEXUS IA</h1>
-            <p className="text-xs text-blue-400 font-mono tracking-widest">SISTEMA SUPERVISÓRIO v3.1</p>
+            <p className="text-xs text-blue-400 font-mono tracking-widest">SISTEMA SUPERVISÓRIO v3.2</p>
           </div>
         </div>
 
@@ -493,12 +494,6 @@ export default function App() {
              <p className="text-xs text-slate-500 uppercase font-bold">Risco Máquina</p>
              <p className={`font-mono font-bold ${machineRisk.color}`}>
                {machineRisk.label}
-             </p>
-          </div>
-          <div className="text-center md:text-right border-l border-slate-800 pl-4 md:pl-6">
-             <p className="text-xs text-slate-500 uppercase font-bold">Risco Equipe</p>
-             <p className={`font-mono font-bold ${employeeRisk.color}`}>
-               {employeeRisk.label}
              </p>
           </div>
         </div>
@@ -522,24 +517,19 @@ export default function App() {
                   <div className="flex items-center gap-3 flex-wrap">
                     <h2 className="text-lg font-semibold text-white">Status: {
                       !machine.isOn ? "PARADA" : 
-                      machine.isAutoCorrecting ? "AUTO-CORREÇÃO" : 
+                      machine.isAutoCorrecting ? `AUTO-CORREÇÃO (${machine.autoCorrectionAttempts}/3)` : 
                       "OPERANDO"
                     }</h2>
-                    {isGracePeriod && (
-                      <span className="flex items-center gap-1.5 text-emerald-400 bg-emerald-950/50 px-2 py-0.5 rounded text-xs font-bold border border-emerald-900 animate-pulse whitespace-nowrap">
-                        <ShieldCheck size={14} /> Estabilizando
-                      </span>
-                    )}
-                    {machine.isAutoCorrecting && (
-                      <span className="flex items-center gap-1.5 text-orange-400 bg-orange-950/50 px-2 py-0.5 rounded text-xs font-bold border border-orange-900 animate-pulse whitespace-nowrap">
-                        <AlertOctagon size={14} /> Tentando estabilizar (1s)
+                    {gracePeriodEnd > Date.now() && machine.isOn && (
+                      <span className="text-emerald-400 bg-emerald-950/50 px-2 py-0.5 rounded text-xs font-bold border border-emerald-900 animate-pulse whitespace-nowrap">
+                        Estabilizando (25s)
                       </span>
                     )}
                   </div>
                   <p className="text-sm text-slate-400 mt-1">
                     {machine.isOn 
-                      ? (machine.isAutoCorrecting ? "Aplicando protocolos de recuperação autônoma..." : isGracePeriod ? "Iniciando protocolos de segurança (15s)..." : "Sistemas nominais. Monitoramento ativo.") 
-                      : "Produção interrompida. Correção aplicada."}
+                      ? (machine.isAutoCorrecting ? "Tentando estabilizar sensores..." : "Sistemas nominais.") 
+                      : "Produção interrompida."}
                   </p>
                 </div>
              </div>
@@ -562,90 +552,66 @@ export default function App() {
             ))}
           </div>
 
-          {/* Neural Monitor Panel (Replaces Graph) */}
-          <div className="bg-slate-900 rounded-2xl border border-slate-800 p-6 flex-1 min-h-[300px] flex flex-col relative overflow-hidden">
-            {/* Ambient Background Glow */}
-            <div className="absolute -top-20 -right-20 w-60 h-60 bg-blue-500/10 rounded-full blur-[80px] pointer-events-none"></div>
-            <div className="absolute -bottom-20 -left-20 w-60 h-60 bg-purple-500/10 rounded-full blur-[80px] pointer-events-none"></div>
-
-            <div className="flex justify-between items-center mb-6 relative z-10">
-               <h3 className="font-semibold text-slate-200 flex items-center gap-2">
-                 <Activity size={18} className="text-emerald-400"/> Monitoramento Neural & Eficiência
-               </h3>
-               <span className="text-xs text-slate-500 font-mono flex items-center gap-1 border border-slate-700 px-2 py-1 rounded-full bg-slate-950/50">
-                 <div className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse"></div> 
-                 REDE ESTÁVEL
-               </span>
-            </div>
-
-            <div className="flex-1 grid grid-cols-1 md:grid-cols-2 gap-8 relative z-10">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
               
-              {/* Circular Efficiency Indicator */}
-              <div className="flex flex-col items-center justify-center">
-                 <div className="relative w-40 h-40 flex items-center justify-center">
-                    {/* Outer Ring */}
-                    <div className="absolute inset-0 rounded-full border-4 border-slate-800"></div>
-                    {/* Animated Spin Ring */}
-                    <div className={`absolute inset-0 rounded-full border-4 border-transparent ${machine.isAutoCorrecting ? 'border-t-orange-500 animate-spin duration-[0.5s]' : 'border-t-emerald-500 animate-spin duration-[3s]'}`}></div>
-                    {/* Inner Content */}
-                    <div className="flex flex-col items-center">
-                      <span className={`text-4xl font-bold tracking-tighter ${machine.isAutoCorrecting ? 'text-orange-500' : 'text-white'}`}>
-                        {machine.isOn ? (machine.isAutoCorrecting ? 'WARN' : isGracePeriod ? '84%' : '98%') : '0%'}
-                      </span>
-                      <span className="text-[10px] text-slate-400 uppercase tracking-widest mt-1">Eficiência</span>
+              {/* TANK / REFILL PANEL */}
+              <div className="bg-slate-900 rounded-2xl border border-slate-800 p-6 flex flex-col justify-between">
+                 <div className="flex justify-between items-center mb-4">
+                    <h3 className="font-semibold text-slate-200 flex items-center gap-2">
+                        <Container size={18} className="text-blue-400"/> Tanque de Insumo
+                    </h3>
+                    <span className={`text-xs font-bold px-2 py-1 rounded ${tankPercent < 20 ? 'bg-red-950 text-red-400 animate-pulse' : 'bg-slate-800 text-slate-400'}`}>
+                        {Math.ceil(machine.refillTimer / 60)} min restantes
+                    </span>
+                 </div>
+                 
+                 <div className="space-y-2 mb-4">
+                    <div className="flex justify-between text-xs text-slate-400">
+                        <span>Nível Atual</span>
+                        <span>{tankPercent.toFixed(0)}%</span>
+                    </div>
+                    <div className="h-4 w-full bg-slate-800 rounded-full overflow-hidden border border-slate-700">
+                        <div 
+                            className={`h-full transition-all duration-500 ${tankPercent < 20 ? 'bg-red-500' : tankPercent < 50 ? 'bg-yellow-500' : 'bg-blue-500'}`}
+                            style={{ width: `${tankPercent}%` }}
+                        ></div>
                     </div>
                  </div>
-                 <p className="mt-4 text-xs text-slate-400 text-center max-w-[200px]">
-                   {machine.isOn 
-                      ? (machine.isAutoCorrecting ? "TENTATIVA DE CORREÇÃO..." : "Otimização de processos em tempo real ativa.") 
-                      : "Aguardando inicialização do sistema."}
-                 </p>
+
+                 <button 
+                    onClick={handleRefill}
+                    disabled={!machine.isOn || machine.refillTimer > 600}
+                    className="w-full flex items-center justify-center gap-2 px-4 py-2 bg-slate-800 hover:bg-blue-600 hover:text-white text-slate-300 rounded-lg transition-colors border border-slate-700 disabled:opacity-50 disabled:cursor-not-allowed"
+                 >
+                    <Fuel size={16} />
+                    Confirmar Abastecimento
+                 </button>
               </div>
 
-              {/* Metrics Bars */}
-              <div className="flex flex-col justify-center gap-6">
-                
-                {/* Latency */}
-                <div className="space-y-2">
-                  <div className="flex justify-between text-xs font-bold text-slate-400">
-                    <span className="flex items-center gap-1"><Wifi size={12}/> Latência de Rede</span>
-                    <span className="text-blue-400">{networkLatency.toFixed(0)}ms</span>
-                  </div>
-                  <div className="h-2 w-full bg-slate-800 rounded-full overflow-hidden">
-                    <div 
-                      className="h-full bg-blue-500 rounded-full transition-all duration-500" 
-                      style={{ width: `${Math.min(100, (networkLatency / 150) * 100)}%` }}
-                    ></div>
-                  </div>
-                </div>
-
-                {/* Processing Load */}
-                <div className="space-y-2">
-                  <div className="flex justify-between text-xs font-bold text-slate-400">
-                    <span className="flex items-center gap-1"><Zap size={12}/> Carga Neural</span>
-                    <span className="text-purple-400">{neuralLoad.toFixed(1)}%</span>
-                  </div>
-                  <div className="h-2 w-full bg-slate-800 rounded-full overflow-hidden">
-                    <div 
-                      className="h-full bg-purple-500 rounded-full transition-all duration-300" 
-                      style={{ width: `${neuralLoad}%` }}
-                    ></div>
-                  </div>
-                </div>
-
-                {/* Server Status */}
-                <div className="flex items-center gap-3 p-3 bg-slate-800/50 rounded-lg border border-slate-700/50 mt-2">
-                   <div className="bg-slate-900 p-2 rounded text-emerald-400">
-                     <Server size={16} />
-                   </div>
-                   <div>
-                     <div className="text-xs text-slate-400">Status do Servidor</div>
-                     <div className="text-sm font-bold text-white">Online • <span className="text-emerald-500">Estável</span></div>
-                   </div>
-                </div>
-
+              {/* Neural Monitor */}
+              <div className="bg-slate-900 rounded-2xl border border-slate-800 p-6 relative overflow-hidden">
+                 <div className="flex justify-between items-center mb-4 relative z-10">
+                    <h3 className="font-semibold text-slate-200 flex items-center gap-2">
+                        <Activity size={18} className="text-emerald-400"/> Rede Neural
+                    </h3>
+                    <div className="flex items-center gap-2 text-xs text-slate-500">
+                        <Wifi size={12} /> {networkLatency}ms
+                    </div>
+                 </div>
+                 <div className="relative z-10 flex items-center gap-4">
+                     <div className="relative w-20 h-20 flex items-center justify-center">
+                        <div className="absolute inset-0 rounded-full border-2 border-slate-800"></div>
+                        <div className="absolute inset-0 rounded-full border-2 border-transparent border-t-purple-500 animate-spin"></div>
+                        <span className="text-lg font-bold text-white">{neuralLoad.toFixed(0)}%</span>
+                     </div>
+                     <div className="text-xs text-slate-400">
+                        <p>Processamento de IA</p>
+                        <p className="text-emerald-400 font-bold">Otimizado</p>
+                     </div>
+                 </div>
+                 <div className="absolute -bottom-10 -right-10 w-32 h-32 bg-purple-500/10 rounded-full blur-2xl"></div>
               </div>
-            </div>
+
           </div>
 
           {/* Employee Table */}
@@ -654,21 +620,17 @@ export default function App() {
                 <h3 className="font-semibold text-slate-200 flex items-center gap-2">
                 <User size={18} className="text-purple-400"/> Monitoramento de Equipe
                 </h3>
-                {hasLaborIssues ? (
+                {employees.some(e => e.status === 'MISSING_EXIT') && (
                     <button 
                         onClick={handleCorrectEmployees}
                         className="w-full sm:w-auto justify-center flex items-center gap-1.5 px-3 py-1.5 bg-red-600 hover:bg-red-500 text-white text-xs font-bold rounded-lg transition-colors animate-pulse shadow-[0_0_15px_rgba(220,38,38,0.5)]"
                     >
                         <UserCheck size={14} />
-                        Corrigir Erro de Ponto & Notificar
+                        Corrigir Ponto & Notificar
                     </button>
-                ) : (
-                  <span className="text-xs text-emerald-500 flex items-center gap-1 bg-emerald-950/30 px-2 py-1 rounded border border-emerald-900/50">
-                    <ShieldCheck size={12} /> Equipe Regularizada
-                  </span>
                 )}
             </div>
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               {employees.map(e => (
                 <EmployeeCard key={e.id} employee={e} />
               ))}
@@ -685,7 +647,7 @@ export default function App() {
                 <MessageSquare size={18} className="text-emerald-400" />
                 NEXUS IA
               </h3>
-              <p className="text-[10px] text-slate-500 uppercase tracking-wider">Interface Neural v3.1</p>
+              <p className="text-[10px] text-slate-500 uppercase tracking-wider">Interface Neural v3.2</p>
             </div>
             
             <div className="flex px-2 gap-1">
