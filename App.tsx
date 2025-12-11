@@ -84,7 +84,7 @@ export default function App() {
     productionLoss: 0,
     isAutoCorrecting: false,
     autoCorrectionStartTime: 0,
-    refillTimer: 90, // Começa com 90s para teste (Valor real seria 720s para 12min)
+    refillTimer: 40, // Começa com 40s (Simulando tanque quase vazio ao ligar)
     autoCorrectionAttempts: 0
   });
 
@@ -100,7 +100,12 @@ export default function App() {
   
   // Chat State
   const [chatHistory, setChatHistory] = useState<ChatMessage[]>([
-    { id: '0', role: 'model', text: 'Nexus IA online. Sistemas nominais. Aguardando comando para análise.', timestamp: new Date() }
+    { 
+      id: '0', 
+      role: 'model', 
+      text: 'Nexus IA online.\n\nPosso gerar os seguintes relatórios:\n1. 📋 Status Geral\n2. 💰 Impacto Financeiro\n3. 👥 Funcionários & RH\n4. 🔮 Previsão de Falhas\n\nQual deseja visualizar?', 
+      timestamp: new Date() 
+    }
   ]);
   const [reports, setReports] = useState<SystemReport[]>(PRE_CANNED_REPORTS);
   const [inputMessage, setInputMessage] = useState('');
@@ -165,7 +170,7 @@ export default function App() {
   };
 
   const handleRefill = () => {
-      setMachine(prev => ({ ...prev, refillTimer: 720 })); // Reseta para 12 minutos
+      setMachine(prev => ({ ...prev, refillTimer: 720 })); // Reseta para 12 minutos (720s)
       addNotification("Abastecimento confirmado. Tanque 100%.", 'SUCCESS');
       
       // Log do abastecimento
@@ -366,7 +371,12 @@ export default function App() {
 
   const clearChat = () => {
       setChatHistory([
-        { id: Date.now().toString(), role: 'model', text: 'Histórico limpo. Nexus IA pronta.', timestamp: new Date() }
+        { 
+          id: Date.now().toString(), 
+          role: 'model', 
+          text: 'Nexus IA reiniciada.\n\nPosso gerar os seguintes relatórios:\n1. 📋 Status Geral\n2. 💰 Impacto Financeiro\n3. 👥 Funcionários & RH\n4. 🔮 Previsão de Falhas\n\nQual deseja visualizar?', 
+          timestamp: new Date() 
+        }
       ]);
   };
 
@@ -399,8 +409,9 @@ export default function App() {
     else if (lowerText.includes('ponto') || lowerText.includes('funcionario') || lowerText.includes('rh')) reportType = 'RH';
     else if (lowerText.includes('previsão') || lowerText.includes('futuro')) reportType = 'PREVISAO';
 
-    // Se for um "Oi", não gera relatório. Se tiver "relatório" ou for longo, gera.
-    const isGreeting = ['oi', 'ola', 'olá', 'bom dia', 'boa tarde'].includes(lowerText.trim());
+    // Se for um "Oi" ou pedido de menu, não gera relatório como arquivo, apenas responde no chat.
+    // Se tiver "relatório" ou for longo, gera o arquivo na aba lateral.
+    const isGreeting = ['oi', 'ola', 'olá', 'bom dia', 'boa tarde', 'menu', 'ajuda'].includes(lowerText.trim());
     const isReportRequest = lowerText.includes('relatório') || lowerText.includes('analise') || lowerText.includes('status');
 
     if (!isGreeting && (isReportRequest || responseText.length > 250)) {
@@ -440,15 +451,15 @@ export default function App() {
     const criticalSensors = sensors.filter(s => s.status === 'CRITICAL');
     if (criticalSensors.length > 0) return { label: 'CRÍTICO', color: 'text-red-500 animate-pulse' };
     
-    // Alerta de tanque baixo
-    if (machine.refillTimer < 120) return { label: 'INSUMO BAIXO', color: 'text-yellow-400 animate-pulse' };
+    // Alerta de tanque baixo (ajustado para proporção de 720s, alerta se < 40s)
+    if (machine.refillTimer < 40) return { label: 'INSUMO BAIXO', color: 'text-yellow-400 animate-pulse' };
 
     return { label: 'NORMAL', color: 'text-emerald-500' };
   };
 
   const machineRisk = getMachineRiskStatus();
   
-  // Calcula porcentagem do tanque
+  // Calcula porcentagem do tanque (Base 720s - 12 minutos)
   const tankPercent = Math.max(0, Math.min(100, (machine.refillTimer / 720) * 100));
 
   return (
@@ -485,7 +496,7 @@ export default function App() {
           </div>
           <div>
             <h1 className="text-2xl font-bold text-white tracking-tight">NEXUS IA</h1>
-            <p className="text-xs text-blue-400 font-mono tracking-widest">SISTEMA SUPERVISÓRIO v3.2</p>
+            <p className="text-xs text-blue-400 font-mono tracking-widest">SISTEMA SUPERVISÓRIO v3.3</p>
           </div>
         </div>
 
@@ -561,7 +572,7 @@ export default function App() {
                         <Container size={18} className="text-blue-400"/> Tanque de Insumo
                     </h3>
                     <span className={`text-xs font-bold px-2 py-1 rounded ${tankPercent < 20 ? 'bg-red-950 text-red-400 animate-pulse' : 'bg-slate-800 text-slate-400'}`}>
-                        {Math.ceil(machine.refillTimer / 60)} min restantes
+                        {machine.refillTimer}s restantes
                     </span>
                  </div>
                  
@@ -572,7 +583,7 @@ export default function App() {
                     </div>
                     <div className="h-4 w-full bg-slate-800 rounded-full overflow-hidden border border-slate-700">
                         <div 
-                            className={`h-full transition-all duration-500 ${tankPercent < 20 ? 'bg-red-500' : tankPercent < 50 ? 'bg-yellow-500' : 'bg-blue-500'}`}
+                            className={`h-full transition-all duration-500 ${tankPercent < 10 ? 'bg-red-500' : tankPercent < 40 ? 'bg-yellow-500' : 'bg-blue-500'}`}
                             style={{ width: `${tankPercent}%` }}
                         ></div>
                     </div>
@@ -580,11 +591,11 @@ export default function App() {
 
                  <button 
                     onClick={handleRefill}
-                    disabled={!machine.isOn || machine.refillTimer > 600}
+                    disabled={!machine.isOn || machine.refillTimer > 710} // Só permite reabastecer se não estiver cheio
                     className="w-full flex items-center justify-center gap-2 px-4 py-2 bg-slate-800 hover:bg-blue-600 hover:text-white text-slate-300 rounded-lg transition-colors border border-slate-700 disabled:opacity-50 disabled:cursor-not-allowed"
                  >
                     <Fuel size={16} />
-                    Confirmar Abastecimento
+                    Confirmar Abastecimento (12min)
                  </button>
               </div>
 
@@ -647,7 +658,7 @@ export default function App() {
                 <MessageSquare size={18} className="text-emerald-400" />
                 NEXUS IA
               </h3>
-              <p className="text-[10px] text-slate-500 uppercase tracking-wider">Interface Neural v3.2</p>
+              <p className="text-[10px] text-slate-500 uppercase tracking-wider">Interface Neural v3.3</p>
             </div>
             
             <div className="flex px-2 gap-1">
@@ -704,23 +715,25 @@ export default function App() {
                 </div>
 
                 <div className="p-4 border-t border-slate-800 bg-slate-900">
-                  <div className="flex gap-2 mb-3 overflow-x-auto pb-2 scrollbar-hide">
-                    {QUICK_COMMANDS.map((cmd, i) => (
-                      <button 
-                        key={i}
-                        onClick={() => setInputMessage(cmd.cmd)}
-                        className="flex items-center gap-1.5 px-3 py-2 bg-slate-800 hover:bg-slate-700 rounded-lg border border-slate-700 transition-colors shrink-0 group"
-                      >
-                        <cmd.icon size={14} className="text-blue-400 group-hover:text-white" />
-                        <span className="text-xs text-slate-300 font-medium whitespace-nowrap">{cmd.label}</span>
-                      </button>
-                    ))}
+                  <div className="flex items-center gap-2 mb-3">
+                    <div className="flex-1 flex gap-2 overflow-x-auto pb-2 scrollbar-hide">
+                      {QUICK_COMMANDS.map((cmd, i) => (
+                        <button 
+                          key={i}
+                          onClick={() => setInputMessage(cmd.cmd)}
+                          className="flex items-center gap-1.5 px-3 py-2 bg-slate-800 hover:bg-slate-700 rounded-lg border border-slate-700 transition-colors shrink-0 group"
+                        >
+                          <cmd.icon size={14} className="text-blue-400 group-hover:text-white" />
+                          <span className="text-xs text-slate-300 font-medium whitespace-nowrap">{cmd.label}</span>
+                        </button>
+                      ))}
+                    </div>
                     <button 
                       onClick={clearChat}
-                      className="flex items-center gap-1.5 px-3 py-2 bg-red-950/30 hover:bg-red-900/50 rounded-lg border border-red-900/50 transition-colors shrink-0"
+                      className="flex items-center justify-center w-9 h-9 bg-red-950/30 hover:bg-red-900/50 rounded-lg border border-red-900/50 transition-colors shrink-0 mb-2"
                       title="Limpar Histórico"
                     >
-                      <Trash2 size={14} className="text-red-400" />
+                      <Trash2 size={16} className="text-red-400" />
                     </button>
                   </div>
 

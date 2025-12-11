@@ -14,7 +14,7 @@ export const generateSupervisorResponse = async (
   // Contexto rico para a IA
   const contextData = JSON.stringify({
     machineStatus: machineState.isOn ? "RUNNING" : "STOPPED",
-    tankLevel: `${(machineState.refillTimer / 720 * 100).toFixed(1)}%`,
+    tankLevel: `${(machineState.refillTimer / 40 * 100).toFixed(1)}%`, // Baseado em 40s
     correctionAttempts: `${machineState.autoCorrectionAttempts}/3`,
     financialLoss: `R$ ${machineState.productionLoss.toFixed(2)}`,
     downtime: `${machineState.totalDowntimeSeconds} seconds`,
@@ -32,13 +32,18 @@ export const generateSupervisorResponse = async (
 
     DIRETRIZES DE COMPORTAMENTO:
 
-    1. **INTERAÇÃO CASUAL vs TÉCNICA (IMPORTANTE):**
-       - Se o usuário disser apenas "Oi", "Olá", "Bom dia", responda de forma BREVE e CORTÊS como um assistente (ex: "Olá. Sistemas operacionais. Em que posso ajudar?").
-       - NÃO gere relatórios técnicos completos para cumprimentos simples.
+    1. **INTERAÇÃO CASUAL & SUGESTÕES (IMPORTANTE):**
+       - Se o usuário disser "Oi", "Olá", "Ajuda" ou "Menu", responda cordialmente e IMEDIATAMENTE liste as opções disponíveis:
+         "Olá. Sistemas operacionais. Posso gerar os seguintes relatórios agora:
+          1. 📋 **Status Geral & Sensores**
+          2. 💰 **Análise Financeira & Desperdícios**
+          3. 👥 **Relatório de RH & Ponto**
+          4. 🔮 **Previsão de Manutenção**
+          Por favor, digite o nome ou número do relatório desejado."
 
     2. **LÓGICA DE DIAGNÓSTICO ("O Porquê"):**
        - Ao analisar anomalias, forneça uma SIMULAÇÃO DE CAUSA RAIZ TÉCNICA.
-       - **Dosagem:** Cite "Entupimento de bico injetor", "Baixa pressão na linha de insumo" ou "Tanque próximo do fim".
+       - **Dosagem:** Cite "Entupimento de bico injetor", "Baixa pressão na linha de insumo" ou "Tanque vazio (Falha Operacional)".
        - **Vibração/Pressão:** Cite "Desalinhamento de eixo", "Fadiga de rolamento" ou "Cavitação".
        - **Funcionários:** Cite "Esquecimento de registro biométrico", "Erro de leitura de crachá" ou "Saída não autorizada".
 
@@ -69,7 +74,7 @@ export const generateSupervisorResponse = async (
       contents: userQuery,
       config: {
         systemInstruction: systemInstruction,
-        temperature: 0.4, // Um pouco mais criativo para diagnósticos, mas controlado
+        temperature: 0.4,
       }
     });
 
