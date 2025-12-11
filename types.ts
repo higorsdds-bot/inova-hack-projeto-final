@@ -21,6 +21,8 @@ export interface MachineState {
   lastToggleTime: Date;
   totalDowntimeSeconds: number;
   productionLoss: number;
+  isAutoCorrecting: boolean;     // Novo
+  autoCorrectionStartTime: number; // Novo
 }
 
 export interface ChatMessage {

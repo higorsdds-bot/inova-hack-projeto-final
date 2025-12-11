@@ -19,7 +19,12 @@ import {
   Wifi,
   Zap,
   Server,
-  BarChart3
+  BarChart3,
+  Wrench,
+  Trash2,
+  HardHat,
+  Leaf,
+  AlertOctagon
 } from 'lucide-react';
 
 // --- INITIAL DATA ---
@@ -61,13 +66,22 @@ const PRE_CANNED_REPORTS: SystemReport[] = [
   }
 ];
 
+const QUICK_COMMANDS = [
+  { icon: Wrench, label: "Diagnóstico", cmd: "Realizar diagnóstico completo do sistema" },
+  { icon: HardHat, label: "Segurança", cmd: "Verificar status de EPIs e riscos" },
+  { icon: Leaf, label: "Energia", cmd: "Análise de eficiência energética" },
+  { icon: Activity, label: "Previsão", cmd: "Previsão de falhas para as próximas 24h" },
+];
+
 export default function App() {
   // State
   const [machine, setMachine] = useState<MachineState>({
     isOn: false,
     lastToggleTime: new Date(),
     totalDowntimeSeconds: 0,
-    productionLoss: 0
+    productionLoss: 0,
+    isAutoCorrecting: false,
+    autoCorrectionStartTime: 0
   });
 
   const [sensors, setSensors] = useState<SensorData[]>(INITIAL_SENSORS);
@@ -116,6 +130,38 @@ export default function App() {
     }, 6000);
   };
 
+  const handleEmergencyShutdown = (reason: string) => {
+    setMachine(prev => ({ 
+      ...prev, 
+      isOn: false, 
+      isAutoCorrecting: false, 
+      autoCorrectionStartTime: 0 
+    }));
+    
+    // Reset Sensors visually
+    setSensors(prev => prev.map(s => ({ ...s, current: 0, status: 'OK' })));
+
+    // Report
+    const emergencyReport: SystemReport = {
+      id: Date.now().toString(),
+      title: `DESLIGAMENTO DE EMERGÊNCIA - ${new Date().toLocaleTimeString('pt-BR')}`,
+      type: 'INCIDENTE',
+      timestamp: new Date(),
+      content: `**CRITICIDADE MÁXIMA DETECTADA**\n\n**CAUSA:** ${reason}\n**FALHA:** A auto-correção automática não conseguiu estabilizar os níveis em 1s.\n**AÇÃO:** Corte de energia imediato para preservação do equipamento.\n**IMPACTO:** Parada total da linha.`
+    };
+    setReports(prev => [emergencyReport, ...prev]);
+    setActiveTab('reports');
+    
+    addNotification(`FALHA CRÍTICA: ${reason}. Desligamento de emergência acionado.`, 'ALERT');
+    
+    setChatHistory(prev => [...prev, { 
+      id: Date.now().toString(), 
+      role: 'system', 
+      text: "NEXUS: Protocolo de emergência executado. Auto-correção falhou. Máquina desligada.", 
+      timestamp: new Date() 
+    }]);
+  };
+
   // --- SIMULATION LOOP ---
   useEffect(() => {
     const interval = setInterval(() => {
@@ -128,17 +174,26 @@ export default function App() {
 
       // 1. Machine Logic
       if (machine.isOn) {
+        
+        // --- SENSOR UPDATES ---
+        let criticalSensors: string[] = [];
+        
         setSensors(prev => {
-          let hasNewCritical = false;
-          const updated = prev.map(s => {
+          return prev.map(s => {
             let change = (Math.random() - 0.5) * 2; 
 
-            if (!isGracePeriod && Math.random() < 0.08) {
-               change += (Math.random() * 25); 
+            // If auto-correcting, try to force values back to mean (Damping)
+            if (machine.isAutoCorrecting) {
+               const ideal = (s.min + s.max) / 2;
+               // Strong pull towards ideal value
+               change = (ideal - s.current) * 0.3; 
+            } else if (!isGracePeriod && Math.random() < 0.08) {
+               change += (Math.random() * 25); // Random spike
             }
 
             let newVal = Math.max(0, s.current + change);
             
+            // Grace period logic
             if (isGracePeriod) {
                const ideal = (s.min + s.max) / 2;
                newVal = s.current + (ideal - s.current) * 0.1;
@@ -149,7 +204,6 @@ export default function App() {
             if (!isGracePeriod) {
               if (newVal < s.min || newVal > s.max) {
                 newStatus = 'CRITICAL';
-                if (s.status !== 'CRITICAL') hasNewCritical = true;
               }
               else if (newVal < s.min * 1.1 || newVal > s.max * 0.9) newStatus = 'WARNING';
             }
@@ -161,14 +215,64 @@ export default function App() {
               lastUpdated: new Date().toLocaleTimeString('pt-BR')
             };
           });
-
-          if (hasNewCritical) {
-            addNotification("CRÍTICO: Anomalia em sensores. Alerta remoto enviado via App.", 'ALERT');
-          }
-
-          return updated;
         });
+
+        // --- CHECK FOR CRITICAL STATE AFTER UPDATE ---
+        // We need to check the state we just calculated. 
+        // Since setState is async, we'll do a "look-ahead" check or rely on the previous cycle's effect if using refs, 
+        // but here we can iterate the sensors state in the next tick. 
+        // Simpler approach: Check current sensors state inside the SetInterval before update? No, check updated values.
+        
+        // Since we can't access the *just set* state immediately, we will use a functional update for logic
+        // or check the *previous* state at the start of the next interval.
+        // Let's check `sensors` state which is from the *last* render.
+        
+        const currentCriticals = sensors.filter(s => 
+          s.status === 'CRITICAL' && 
+          ['Temperatura', 'Pressão', 'Vibração'].includes(s.name)
+        );
+
+        if (currentCriticals.length > 0) {
+           
+           if (!machine.isAutoCorrecting) {
+             // START AUTO CORRECTION
+             setMachine(prev => ({
+               ...prev,
+               isAutoCorrecting: true,
+               autoCorrectionStartTime: Date.now()
+             }));
+             addNotification(`ANOMALIA DETECTADA (${currentCriticals.map(s=>s.name).join(', ')}). Tentando auto-correção (1s)...`, 'ALERT');
+             setChatHistory(prev => [...prev, { 
+                id: Date.now().toString(), 
+                role: 'system', 
+                text: "NEXUS: Iniciando sub-rotina de estabilização autônoma...", 
+                timestamp: new Date() 
+             }]);
+
+           } else {
+             // ALREADY AUTO CORRECTING - CHECK TIME
+             const elapsed = Date.now() - machine.autoCorrectionStartTime;
+             if (elapsed > 1500) { // Giving it ~1.5s (allow 1 tick buffer over 1s)
+                // TIME IS UP. DID IT FIX?
+                // If we are here, `currentCriticals` is still > 0 based on the last render.
+                // Emergency Shutdown.
+                handleEmergencyShutdown(`Falha Crítica persistente em: ${currentCriticals.map(s => s.name).join(', ')}`);
+             }
+           }
+        } else {
+           // No criticals. If we were correcting, we succeeded.
+           if (machine.isAutoCorrecting) {
+              setMachine(prev => ({
+                ...prev,
+                isAutoCorrecting: false,
+                autoCorrectionStartTime: 0
+              }));
+              addNotification("SISTEMA ESTABILIZADO. Auto-correção bem sucedida.", 'SUCCESS');
+           }
+        }
+
       } else {
+        // Machine OFF
         setMachine(prev => ({
           ...prev,
           totalDowntimeSeconds: prev.totalDowntimeSeconds + 1,
@@ -178,7 +282,7 @@ export default function App() {
     }, 1000);
 
     return () => clearInterval(interval);
-  }, [machine.isOn, sensors, gracePeriodEnd]);
+  }, [machine.isOn, machine.isAutoCorrecting, machine.autoCorrectionStartTime, sensors, gracePeriodEnd]);
 
   // --- HANDLERS ---
   const togglePower = () => {
@@ -199,7 +303,7 @@ export default function App() {
         status: 'OK'
       })));
 
-      setMachine(prev => ({ ...prev, isOn: false }));
+      setMachine(prev => ({ ...prev, isOn: false, isAutoCorrecting: false }));
       addNotification("Máquina parada manualmente. Logs sincronizados na nuvem.", 'INFO');
       
       setChatHistory(prev => [...prev, { 
@@ -211,7 +315,7 @@ export default function App() {
 
     } else {
       setGracePeriodEnd(Date.now() + 15000);
-      setMachine(prev => ({ ...prev, isOn: true }));
+      setMachine(prev => ({ ...prev, isOn: true, isAutoCorrecting: false }));
       addNotification("Inicializando motor. Notificação de início de turno enviada.", 'SUCCESS');
 
       setChatHistory(prev => [...prev, { 
@@ -255,6 +359,12 @@ export default function App() {
         text: `NEXUS: Pendências de ponto corrigidas. Relatório de RH gerado automaticamente.`, 
         timestamp: new Date() 
     }]);
+  };
+
+  const clearChat = () => {
+      setChatHistory([
+        { id: Date.now().toString(), role: 'model', text: 'Histórico limpo. Nexus IA pronta.', timestamp: new Date() }
+      ]);
   };
 
   const handleSendMessage = async () => {
@@ -320,6 +430,8 @@ export default function App() {
 
   const getMachineRiskStatus = () => {
     if (!machine.isOn) return { label: 'PARADA', color: 'text-slate-500' };
+    if (machine.isAutoCorrecting) return { label: 'AUTO-CORREÇÃO', color: 'text-orange-400 animate-pulse' };
+
     const criticalSensors = sensors.filter(s => s.status === 'CRITICAL');
     const warningSensors = sensors.filter(s => s.status === 'WARNING');
     if (criticalSensors.length > 0) return { label: 'CRÍTICO', color: 'text-red-500 animate-pulse' };
@@ -398,22 +510,35 @@ export default function App() {
         <div className="lg:col-span-2 flex flex-col gap-6 lg:overflow-y-auto scrollbar-hide lg:pr-2 pb-4 lg:pb-0">
           
           {/* Main Status Card */}
-          <div className="bg-slate-900/50 rounded-2xl border border-slate-800 p-6 flex flex-col md:flex-row items-center justify-between gap-6 backdrop-blur-sm relative overflow-hidden">
-             <div className={`absolute top-0 left-0 w-1 h-full ${machine.isOn ? 'bg-emerald-500' : 'bg-red-500'}`}></div>
+          <div className={`bg-slate-900/50 rounded-2xl border ${machine.isAutoCorrecting ? 'border-orange-500 shadow-orange-900/20' : 'border-slate-800'} p-6 flex flex-col md:flex-row items-center justify-between gap-6 backdrop-blur-sm relative overflow-hidden transition-colors duration-300`}>
+             <div className={`absolute top-0 left-0 w-1 h-full ${machine.isOn ? (machine.isAutoCorrecting ? 'bg-orange-500' : 'bg-emerald-500') : 'bg-red-500'}`}></div>
              <div className="flex items-center gap-4">
-                <div className={`w-4 h-4 rounded-full ${machine.isOn ? 'bg-emerald-500 shadow-[0_0_15px_rgba(16,185,129,0.5)]' : 'bg-red-500 shadow-[0_0_15px_rgba(239,68,68,0.5)]'}`}></div>
+                <div className={`w-4 h-4 rounded-full ${
+                  machine.isOn 
+                    ? (machine.isAutoCorrecting ? 'bg-orange-500 animate-ping' : 'bg-emerald-500 shadow-[0_0_15px_rgba(16,185,129,0.5)]')
+                    : 'bg-red-500 shadow-[0_0_15px_rgba(239,68,68,0.5)]'
+                }`}></div>
                 <div>
                   <div className="flex items-center gap-3 flex-wrap">
-                    <h2 className="text-lg font-semibold text-white">Status da Máquina: {machine.isOn ? "OPERANDO" : "PARADA"}</h2>
+                    <h2 className="text-lg font-semibold text-white">Status: {
+                      !machine.isOn ? "PARADA" : 
+                      machine.isAutoCorrecting ? "AUTO-CORREÇÃO" : 
+                      "OPERANDO"
+                    }</h2>
                     {isGracePeriod && (
                       <span className="flex items-center gap-1.5 text-emerald-400 bg-emerald-950/50 px-2 py-0.5 rounded text-xs font-bold border border-emerald-900 animate-pulse whitespace-nowrap">
                         <ShieldCheck size={14} /> Estabilizando
                       </span>
                     )}
+                    {machine.isAutoCorrecting && (
+                      <span className="flex items-center gap-1.5 text-orange-400 bg-orange-950/50 px-2 py-0.5 rounded text-xs font-bold border border-orange-900 animate-pulse whitespace-nowrap">
+                        <AlertOctagon size={14} /> Tentando estabilizar (1s)
+                      </span>
+                    )}
                   </div>
                   <p className="text-sm text-slate-400 mt-1">
                     {machine.isOn 
-                      ? (isGracePeriod ? "Iniciando protocolos de segurança (15s)..." : "Sistemas nominais. Monitoramento ativo.") 
+                      ? (machine.isAutoCorrecting ? "Aplicando protocolos de recuperação autônoma..." : isGracePeriod ? "Iniciando protocolos de segurança (15s)..." : "Sistemas nominais. Monitoramento ativo.") 
                       : "Produção interrompida. Correção aplicada."}
                   </p>
                 </div>
@@ -425,7 +550,7 @@ export default function App() {
                  className={`flex-1 md:flex-none justify-center flex items-center gap-2 px-6 py-3 rounded-full font-bold transition-all duration-300 transform active:scale-95 shadow-lg ${machine.isOn ? 'bg-red-500 hover:bg-red-600 text-white shadow-red-900/20' : 'bg-emerald-500 hover:bg-emerald-600 text-white shadow-emerald-900/20'}`}
                >
                  <Power size={20} />
-                 {machine.isOn ? "PARADA / CORRIGIR" : "INICIAR MÁQUINA"}
+                 {machine.isOn ? "PARADA MANUAL" : "INICIAR MÁQUINA"}
                </button>
              </div>
           </div>
@@ -461,17 +586,19 @@ export default function App() {
                     {/* Outer Ring */}
                     <div className="absolute inset-0 rounded-full border-4 border-slate-800"></div>
                     {/* Animated Spin Ring */}
-                    <div className="absolute inset-0 rounded-full border-4 border-transparent border-t-emerald-500 animate-spin duration-[3s]"></div>
+                    <div className={`absolute inset-0 rounded-full border-4 border-transparent ${machine.isAutoCorrecting ? 'border-t-orange-500 animate-spin duration-[0.5s]' : 'border-t-emerald-500 animate-spin duration-[3s]'}`}></div>
                     {/* Inner Content */}
                     <div className="flex flex-col items-center">
-                      <span className="text-4xl font-bold text-white tracking-tighter">
-                        {machine.isOn ? (isGracePeriod ? '84%' : '98%') : '0%'}
+                      <span className={`text-4xl font-bold tracking-tighter ${machine.isAutoCorrecting ? 'text-orange-500' : 'text-white'}`}>
+                        {machine.isOn ? (machine.isAutoCorrecting ? 'WARN' : isGracePeriod ? '84%' : '98%') : '0%'}
                       </span>
                       <span className="text-[10px] text-slate-400 uppercase tracking-widest mt-1">Eficiência</span>
                     </div>
                  </div>
                  <p className="mt-4 text-xs text-slate-400 text-center max-w-[200px]">
-                   {machine.isOn ? "Otimização de processos em tempo real ativa." : "Aguardando inicialização do sistema."}
+                   {machine.isOn 
+                      ? (machine.isAutoCorrecting ? "TENTATIVA DE CORREÇÃO..." : "Otimização de processos em tempo real ativa.") 
+                      : "Aguardando inicialização do sistema."}
                  </p>
               </div>
 
@@ -615,6 +742,26 @@ export default function App() {
                 </div>
 
                 <div className="p-4 border-t border-slate-800 bg-slate-900">
+                  <div className="flex gap-2 mb-3 overflow-x-auto pb-2 scrollbar-hide">
+                    {QUICK_COMMANDS.map((cmd, i) => (
+                      <button 
+                        key={i}
+                        onClick={() => setInputMessage(cmd.cmd)}
+                        className="flex items-center gap-1.5 px-3 py-2 bg-slate-800 hover:bg-slate-700 rounded-lg border border-slate-700 transition-colors shrink-0 group"
+                      >
+                        <cmd.icon size={14} className="text-blue-400 group-hover:text-white" />
+                        <span className="text-xs text-slate-300 font-medium whitespace-nowrap">{cmd.label}</span>
+                      </button>
+                    ))}
+                    <button 
+                      onClick={clearChat}
+                      className="flex items-center gap-1.5 px-3 py-2 bg-red-950/30 hover:bg-red-900/50 rounded-lg border border-red-900/50 transition-colors shrink-0"
+                      title="Limpar Histórico"
+                    >
+                      <Trash2 size={14} className="text-red-400" />
+                    </button>
+                  </div>
+
                   <div className="relative">
                     <input
                       type="text"
@@ -631,11 +778,6 @@ export default function App() {
                     >
                       <Send size={18} />
                     </button>
-                  </div>
-                  <div className="flex gap-2 mt-3 overflow-x-auto pb-1 scrollbar-hide">
-                    <button onClick={() => setInputMessage("Gerar Relatório de Pontos")} className="text-xs px-3 py-1.5 bg-slate-800 hover:bg-slate-700 rounded-full text-slate-400 whitespace-nowrap border border-slate-700 transition-colors">Relatório RH</button>
-                    <button onClick={() => setInputMessage("Calcular prejuízo financeiro")} className="text-xs px-3 py-1.5 bg-slate-800 hover:bg-slate-700 rounded-full text-slate-400 whitespace-nowrap border border-slate-700 transition-colors">Impacto Financeiro</button>
-                    <button onClick={() => setInputMessage("Análise de Causa Raiz")} className="text-xs px-3 py-1.5 bg-slate-800 hover:bg-slate-700 rounded-full text-slate-400 whitespace-nowrap border border-slate-700 transition-colors">Diagnóstico</button>
                   </div>
                 </div>
               </div>
@@ -654,11 +796,11 @@ export default function App() {
                     <div key={report.id} className="bg-slate-800 rounded-lg p-4 border border-slate-700 hover:border-blue-500/50 transition-colors animate-in fade-in slide-in-from-right-4">
                        <div className="flex justify-between items-start mb-3 pb-3 border-b border-slate-700">
                           <div className="flex items-center gap-2">
-                             <div className={`p-1.5 rounded-lg ${report.type === 'RH' ? 'bg-purple-900/50 text-purple-400' : report.type === 'FINANCEIRO' ? 'bg-green-900/50 text-green-400' : 'bg-blue-900/50 text-blue-400'}`}>
+                             <div className={`p-1.5 rounded-lg ${report.type === 'RH' ? 'bg-purple-900/50 text-purple-400' : report.type === 'FINANCEIRO' ? 'bg-green-900/50 text-green-400' : report.type === 'INCIDENTE' ? 'bg-red-900/50 text-red-400' : 'bg-blue-900/50 text-blue-400'}`}>
                                {report.type === 'RH' ? <User size={14} /> : report.type === 'FINANCEIRO' ? <BarChart3 size={14} /> : <FileText size={14} />}
                              </div>
                              <div>
-                                <h4 className={`font-bold text-sm ${report.type === 'RH' ? 'text-purple-400' : report.type === 'FINANCEIRO' ? 'text-green-400' : 'text-blue-400'}`}>
+                                <h4 className={`font-bold text-sm ${report.type === 'RH' ? 'text-purple-400' : report.type === 'FINANCEIRO' ? 'text-green-400' : report.type === 'INCIDENTE' ? 'text-red-400' : 'text-blue-400'}`}>
                                   {report.title}
                                 </h4>
                                 <span className="text-[10px] text-slate-500">{report.timestamp.toLocaleString('pt-BR')}</span>
@@ -667,6 +809,7 @@ export default function App() {
                           <span className={`text-[10px] px-2 py-1 rounded border font-bold ${
                             report.type === 'RH' ? 'bg-purple-950 border-purple-900 text-purple-400' : 
                             report.type === 'FINANCEIRO' ? 'bg-green-950 border-green-900 text-green-400' : 
+                            report.type === 'INCIDENTE' ? 'bg-red-950 border-red-900 text-red-400' :
                             'bg-blue-950 border-blue-900 text-blue-400'
                           }`}>{report.type}</span>
                        </div>
